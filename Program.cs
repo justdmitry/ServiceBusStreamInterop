@@ -2,6 +2,7 @@
 {
     using System;
     using System.IO;
+    using System.Threading;
     using System.Threading.Tasks;
     using Microsoft.Azure.ServiceBus;
     using Microsoft.ServiceBus.Messaging;
@@ -30,9 +31,13 @@
 
             program.SendLegacy(ms).Wait();
             program.SendNew(ms).Wait();
+            program.SendNew(ms).Wait();
+            program.SendLegacy(ms).Wait();
 
             program.ReceiveLegacy().Wait();
             program.ReceiveLegacy().Wait();
+
+            program.ReceiveAllNew().Wait();
         }
 
         public async Task SendLegacy(MemoryStream stream)
@@ -89,6 +94,30 @@
 
             await receiver.CloseAsync();
             await factory.CloseAsync();
+        }
+
+        public async Task ReceiveAllNew()
+        {
+            var subsClient = new Microsoft.Azure.ServiceBus.SubscriptionClient(ConnectionString, Topic, Subscription, Microsoft.Azure.ServiceBus.ReceiveMode.ReceiveAndDelete);
+            subsClient.RegisterMessageHandler(async (Message msg, CancellationToken t) =>
+            {
+                Console.WriteLine($"#{msg.MessageId} received (from {msg.Label}):");
+                var body = msg.Body;
+
+                using (var ms = new MemoryStream())
+                {
+                    await ms.WriteAsync(body, 0, body.Length);
+                    ms.Position = 0;
+                    using (var sr = new StreamReader(ms))
+                    {
+                        var content = await sr.ReadToEndAsync();
+                        Console.WriteLine($"  Content: '{content}'");
+                        Console.WriteLine();
+                    }
+                }
+            });
+
+            await Task.Delay(TimeSpan.FromSeconds(3)); // I hope it's enough
         }
     }
 }
